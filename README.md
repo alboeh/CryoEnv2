@@ -5,5 +5,10 @@ For data handling we are using the well-known cait package from Felix Wagner, be
 
 Currently open topics:
 - Implement 3-component (COSINUS) model by V. Zema
-- Integrate in gymnasium environment
-- How to handle Pile-Ups or instable OPs (bumps in the transition)?
+- Implement SQUID
+- Implement noise as well as SNR output
+- Implement load resistor of the Bias voltage source
+- Get TES curves randomized
+- Get TES dependent on I_B
+- Integrate in gymnasium environment wrapper
+- How to handle Pile-Ups, saturation or instable OPs (bumps in the transition)?

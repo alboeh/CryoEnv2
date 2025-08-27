@@ -1,108 +1,93 @@
 import numpy as np
+import scipy as sp
 
 class twoComp:
     def __init__(self, **params):
-        # Get input values for initial conditions
         """
-        self.t = t
-        self.N = len(t)
-        self.N_f = self.N // 2 + 1      # Frequency space has less points because of real rfft trafo
-        self.dt = t[1] - t[0]
-        self.fs = 1 / self.dt   # Sampling frequency
-        self.f = sp.fft.rfftfreq(self.N, d=self.dt)
-        self.w = 2 * np.pi * self.f   # for noise calculations only positive frequencies are possible
+        Explanation of all parameters
+        ...
+        """
+        # Get input values for initial conditions
 
         # Get inputs
-        self.antialiasing = antialiasing
-        self.noise = noise
-        self.modulation = modulation
-        self.input = inputModel
-        self.solver = solver
+        # TODO: self.lowpass = lowpass
+        # TODO: self.noise = noise
 
         # Get parameters from config
-        self.params = params
-        self.alpha = params.alpha
-        self.beta = params.beta
-        self.T_c = params.T_c
-        self.T_ac = params.T_ac
-        self.T_b = params.T_b
-        self.R_c = params.R_c
-        self.R_S = params.R_S
-        self.C = params.C
-        self.C_a = params.C_a
-        self.G_tb = params.G_tb
-        self.G_ta = params.G_ta
-        self.G_ab = params.G_ab
-        self.L = params.L
+        self.C_e = params["C_e"]    # Heat capacity electrical system
+        self.C_a = params["C_a"]    # Heat capacity absorber
+        self.G_eb = params["G_eb"]  # Thermal conductance from electrical to bath
+        self.G_ea = params["G_ea"]  # Thermal conductance from electrical to absorber
+        self.G_ab = params["G_ab"]  # Thermal conductance between absorber and bath
+        self.T_b = params["T_b"]    # Temperature of the bath
+        self.R_S = params["R_S"]    # Shunt resistance
+        self.L = params["L"]        # Inductance of SQUID input coil
+        self.V_B = params["V_B"]    # Bias voltage
 
-        # Get biasing parameters
-        self.I_e = params.I_e
-        self.f_0 = params.f_0
-        self.w_0 = 2 * np.pi * self.f_0
-        self.kap = params.kap
+    def solve_equations(self, time, tes, heater, V_H):  # Solving numerically since this is only option when not using linearizations (we don't want!)
 
-        # Calc all values for ETM model
-        self.calcValues()
+        # Get time values
+        self.time = time    # 0 ... 0.32766 s in 20 µs-Schritten
+        self.record_length = len(time)
+        self.sample_frequency = 1 / (time[1]-time[0])  
 
-    def calcValues(self):    # Master function to do all the calculations in right order
+        # get classes
+        self.tes = tes
+        self.heater = heater
 
-        self.DP = self.input.DPe  # Input power
-        self.DP_a = self.input.DPa  # Input power for the absorber component
-        self.DP_f = sp.fft.rfft(self.DP)  # Fourier transform of the input power
-        self.DP_a_f = sp.fft.rfft(self.DP_a)
+        self.V_H = V_H * np.ones(self.record_length) if np.isscalar(V_H) else V_H
 
-        # No noise should be applied for now, so this is 0
-        self.DV = np.zeros(self.N)  # Voltage change by noise (not including modulation)
-        self.DV_f = sp.fft.rfft(self.DV)  # Fourier transform of the input voltage
+        # TODO: Implement radomized heater pulses to imitate Pile-Ups etc. For now on = 0
+        self.P_Pe = 0.0; self.P_Pa = 0.0  # Pulse power input
 
-        self.solveODEs()    # Calculate the TES temperature change due to input
+        # Define interpolation functions
+        V_H_int = lambda t: np.interp(t, self.time, self.V_H)
 
-    def setPar(self, **kwargs):     # Function to set parameters
-        for key, value in kwargs.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
-            elif hasattr(self.params, key):
-                setattr(self.params, key, value)
-            else:
-                raise AttributeError(f"Parameter '{key}' not found in params of ETM")
-        
-        # Recalculate dependent values after updating parameters
-        self.calcValues()
-    
-    def solveODEs(self):   # Li is not neglibible (TODO: Put in separate module TES.py)
+        # --- ode ---
+        def ODEs(t, y):
+            I_T, T_e, T_a = y
 
-        # Initialize arrays for Fourier transform of TES current and temperature
-        self.DI_f = np.zeros(self.N_f, dtype=complex)
-        self.DT_f = np.zeros(self.N_f, dtype=complex)
-        self.DT_a_f = np.zeros(self.N_f, dtype=complex)
+            # Import as local variables to speed up
+            L = self.L; R_S = self.R_S
+            C_e = self.C_e; C_a = self.C_a
+            G_eb = self.G_eb; G_ea = self.G_ea; G_ab = self.G_ab
+            T_b = self.T_b; 
+            P_Pe = self.P_Pe; P_Pa = self.P_Pa
+            V_B = self.V_B
 
-        u_f = np.array([self.DV_f, self.DP_f, self.DP_a_f])  # Input array
-        # Loop through each frequency step
-        for i, w in enumerate(self.w):
-            M = np.array([  # Transfer function matrix for the current frequency
-                [1j * w * self.L + self.R_S + self.R_c * (1 + self.beta),
-                    self.I_e * self.R_c * self.alpha / self.T_c,
-                    0],
-                [-self.I_e * self.R_c * (2 + self.beta * (1 + self.kap / 2)),
-                    1j * w * self.C - self.I_e**2 * self.R_c * self.alpha / self.T_c * (1 + self.kap / 2) + self.G_tb + self.G_ta,
-                    -self.G_ab * self.T_ac / self.T_c],
-                [0,
-                    -self.G_ta,
-                    1j * w * self.C_a + self.G_ab + self.G_ta * self.T_ac / self.T_c]
-            ], dtype=complex)
-            # Calculate the inverse of the transfer function matrix
-            M_inv = np.linalg.inv(M)
-            # Calculate the Fourier transform of the TES current and temperature for the current frequency
-            self.DI_f[i], self.DT_f[i], self.DT_a_f[i] = M_inv @ u_f[:, i]  # Matrix multiplication for the current frequency
-        self.DI = sp.fft.irfft(self.DI_f)
-        self.DT = sp.fft.irfft(self.DT_f)
-        self.DT_a = sp.fft.irfft(self.DT_a_f)
+            R_T = self.tes.get_resistance(T_e)
+            P_J = I_T**2 * R_T
+            P_H = self.heater.get_heater_power(V_H_int(t))
 
-        self.I = np.sqrt(2)*(self.I_e + self.DI)*np.sin(self.w_0*self.t)  # TES current
-        self.T = self.DT + self.T_c   # TES temperature by adding the change to the critical temperature
-        self.T_a = self.DT_a + self.T_ac
-        
-        # Calc the modulation index m for AM modulation
-        #if self.modulation == "AM":
-        #    self.m = (np.m)
-        """
+            # Take care of signs!
+            dI_dt  = (V_B - I_T * (R_S + R_T)) / L
+            dTe_dt = (P_J - G_eb*(T_e - T_b) - G_ea*(T_e - T_a) + P_H + P_Pe) / C_e
+            dTa_dt = (G_ea*(T_e - T_a) - G_ab*(T_a - T_b) + P_Pa) / C_a
+
+            return np.array([dI_dt, dTe_dt, dTa_dt])
+
+        # Starting values can be only approximated, that leads sometimes to a small step in the beginning
+        V_B0 = float(self.V_B if np.isscalar(self.V_B) else self.V_B[0])
+        V_H0 = float(self.V_H if np.isscalar(self.V_H) else self.V_H[0])
+        P_Pe0 = float(self.P_Pe if np.isscalar(self.P_Pe) else self.P_Pe[0])
+        P_Pa0 = float(self.P_Pa if np.isscalar(self.P_Pa) else self.P_Pa[0])
+        P_H0 = self.heater.get_heater_power(V_H0)
+
+        I_T0  = V_B0 / (self.R_S + 0.5*self.tes.R_T_max)
+        T_e0 = self.T_b + (I_T0 **2 * (0.5*self.tes.R_T_max) + P_H0 + P_Pe0 + (self.G_ea/(self.G_ea+self.G_ab)) * P_Pa0) / (self.G_eb + (self.G_ea*self.G_ab)/(self.G_ea+self.G_ab))
+        T_a0 = (self.G_ea*T_e0 + self.G_ab*self.T_b + P_Pa0) / (self.G_ea + self.G_ab)
+
+        y0 = np.array([I_T0, T_e0, T_a0])  # Starting values
+
+        sol = sp.integrate.solve_ivp(
+            fun=lambda t, y: ODEs(t, y),    # set ODEs
+            t_span=(time[0], time[-1]),         # evaluate over whole time window
+            y0=y0,                            # arbitrary starting values
+            method="Radau",                     # "Radau" or "BDF"
+            t_eval=time,                        # points to evaluate
+            #jac=lambda t, y: jac(t, y),         # Optional, to boost calculation
+            #atol=[1e-12, 1e-9, 1e-9],         # [A, K, K]
+        )
+
+        I_T, T_e, T_a = sol.y[:,-1]  # Shape: (3, N)
+        return I_T, T_e, T_a
