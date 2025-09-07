@@ -35,7 +35,7 @@ class ETM:
     # Built-in defaults per mode (example numbers; adjust to your setup)
     DEFAULTS: Dict[int, Dict[str, float]] = {
         1: dict(C_e=22e-12, G_eb=2e-7, T_b=0.1, R_S=5e-3, L=200e-9, V_B=5e-6),
-        2: dict(C_e=22e-12, C_a=150e-12, G_eb=7.5e-9, G_ea=140e-12, G_ab=5e-9, T_b=15e-3, R_S=50e-3, L=400e-9, V_B=50e-3),
+        2: dict(C_e=22e-12, C_a=150e-12, G_eb=7.5e-9, G_ea=140e-12, G_ab=5e-9, T_b=15e-3, R_S=50e-3, L=400e-9, V_B=5e-6),
     }
 
 

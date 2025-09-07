@@ -1,5 +1,6 @@
 import numpy as np
 import scipy as sp
+import matplotlib.pyplot as plt
 
 from .core.timebase import init_timebase
 from .modules.heater import Heater
@@ -56,10 +57,31 @@ class Cryosim:
 
     def set_heater_tp(self, tp_amplitude: float):
         self.heater.set_heater_tp(tp_amplitude, self.record_length)
+        self.I_T, self.T_e, self.T_a = self.solver()
 
     def render(self):
-        I_T, T_e, T_a = self.solver()
-        return I_T, T_e, T_a
+        # 2x2 Subplots erstellen
+        fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+
+        # Einzelne Achsen ansprechen
+        axes[0, 0].plot(np.linspace(0, self.R_T_max*2, 100), self.tes.get_resistance(np.linspace(0, self.R_T_max*2, 100)))
+        axes[0, 0].plot(self.T_e, self.tes.get_resistance(self.T_e), 'r.', label='Operating point')
+        axes[0, 0].set_title("TES curve")
+
+        axes[0, 1].plot(self.time, (self.T_e-self.T_e[0]) * 1e3, label='Delta T_e (electrical) in mK')
+        axes[0, 1].plot(self.time, (self.T_a-self.T_a[0]) * 1e3, label='Delta T_a (absorber) in mK')
+        axes[0, 1].legend()
+        axes[0, 1].set_title("Temperatures")
+
+        axes[1, 0].plot(self.time, self.V_H_tp, color='orange', label='Heater Voltage')
+        axes[1, 0].set_title("Heater voltage")
+
+        axes[1, 1].plot(self.time, self.I_T)
+        axes[1, 1].set_title("Current through TES")
+
+        # Layout anpassen
+        plt.tight_layout()
+        plt.show()
     
         
     # IN THIS BLOCK I SOLVE THE ODEs. THIS SHOULD BE LATER MOVED TO THE SEPARATE CORE SOLVER.py
@@ -128,6 +150,10 @@ class Cryosim:
     @property
     def V_H(self): 
         return self.heater.V_H
+    
+    @property
+    def V_H_tp(self): 
+        return self.heater.V_H_tp
     
     # TES:
     @property
