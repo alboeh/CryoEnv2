@@ -61,23 +61,37 @@ class Cryosim:
 
     def render(self):
         # 2x2 Subplots erstellen
-        fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+        fig, axes = plt.subplots(2, 2, figsize=(10, 6))
 
         # Einzelne Achsen ansprechen
-        axes[0, 0].plot(np.linspace(0, self.R_T_max*2, 100), self.tes.get_resistance(np.linspace(0, self.R_T_max*2, 100)))
-        axes[0, 0].plot(self.T_e, self.tes.get_resistance(self.T_e), 'r.', label='Operating point')
+        axes[0, 0].plot(np.linspace(0, 100e-3, 100) * 1e3, self.tes.get_resistance(np.linspace(0, 100e-3, 100)) * 1e3)
+        axes[0, 0].plot(self.T_e * 1e3, self.tes.get_resistance(self.T_e) * 1e3, 'r.', label='Operating point')
         axes[0, 0].set_title("TES curve")
+        axes[0, 0].set_xlabel("Temperature (mK)")
+        axes[0, 0].set_ylabel("Resistance (mOhm)")
+        axes[0, 0].legend()
+        axes[0, 0].grid()
 
         axes[0, 1].plot(self.time, (self.T_e-self.T_e[0]) * 1e3, label='Delta T_e (electrical) in mK')
         axes[0, 1].plot(self.time, (self.T_a-self.T_a[0]) * 1e3, label='Delta T_a (absorber) in mK')
         axes[0, 1].legend()
         axes[0, 1].set_title("Temperatures")
+        axes[0, 1].set_xlabel("Time (s)")
+        axes[0, 1].set_ylabel("Temperature (mK)")
+        axes[0, 1].grid()
 
-        axes[1, 0].plot(self.time, self.V_H_tp, color='orange', label='Heater Voltage')
+        axes[1, 0].plot(self.time, self.V_H_tp * 1e6, color='orange', label='Heater Voltage')
         axes[1, 0].set_title("Heater voltage")
+        axes[1, 0].set_xlabel("Time (s)")
+        axes[1, 0].set_ylabel("Voltage (µV)")
+        axes[1, 0].grid()
+        axes[1, 0].legend()
 
-        axes[1, 1].plot(self.time, self.I_T)
+        axes[1, 1].plot(self.time, self.I_T * 1e6, color='green')
         axes[1, 1].set_title("Current through TES")
+        axes[1, 1].set_xlabel("Time (s)")
+        axes[1, 1].set_ylabel("Current (µA)")
+        axes[1, 1].grid()
 
         # Layout anpassen
         plt.tight_layout()
@@ -129,10 +143,12 @@ class Cryosim:
 
         sol = sp.integrate.solve_ivp(
             fun=lambda t, y: self.rhs(t, y, self.n_comp),    # set ODEs
-            t_span=(self.time[0]-1, self.time[-1]),         # evaluate over whole time window and a little before, so that the starting values can stabilize
+            t_span=(self.time[0]-0.1, self.time[-1]),         # evaluate over whole time window and a little before, so that the starting values can stabilize
             y0=y0,                                          # starting values
-            method="RK45",                                  # "RK45"
-            t_eval=self.time                               # points to give out (only for time values)
+            method="BDF",                                  # "RK23" (Runge-Kutta 2nd order), "RK45" (Runge-Kutta 4th order), "Radau" (implicit Runge-Kutta method), "BDF" (implicit multi-step variable-order method)
+            t_eval=self.time,                               # points to give out (only for time values)
+            max_step=(self.time[1] - self.time[0]) / 2    # don’t skip over your drive/measurement grid
+
         )
 
         I_T, T_e, T_a = sol.y  # Shape: (3, N)
