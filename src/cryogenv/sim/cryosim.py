@@ -52,11 +52,16 @@ class Cryosim:
         
     # Fundamental functions get transferred to cryosim for easy access
 
-    def set_heater(self, V_H: float):
-        self.heater.set_heater(V_H)
+    def set_heater(self, heater_voltage: float):
+        self.heater.set_heater(heater_voltage)
 
     def set_heater_tp(self, tp_amplitude: float):
         self.heater.set_heater_tp(tp_amplitude, self.record_length)
+
+    def set_bias(self, bias_voltage: float):
+        self.etm.set_bias(bias_voltage)
+
+    def solve(self):
         self.I_T, self.T_e, self.T_a = self.solver()
 
     def render(self):

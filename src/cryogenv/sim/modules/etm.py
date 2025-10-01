@@ -70,6 +70,9 @@ class ETM:
 
         print(f"ETM initialized as {self.n_comp}-component model with parameters: " +
               ", ".join(f"{k}={getattr(self, k)}" for k in self.REQUIRED[self.n_comp]))
+        
+    def set_bias(self, V_B):
+        self.V_B = V_B
 
 ###################
 # ETM 3 component #
