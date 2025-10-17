@@ -4,7 +4,7 @@ from numpy.typing import ArrayLike  # For having floats as well as np.ndarrays i
 
 class TES:
     # central place for defaults
-    DEFAULTS = {"R_max": 150e-3, 
+    DEFAULTS = {"R_max": 50e-3, 
                 "T_mid": 35e-3}
 
     AVAILABLE_MODELS = ["sigmoid"]
@@ -51,7 +51,7 @@ class TES:
         """
         T = np.asarray(T, dtype=float)
         if self.model == "sigmoid":
-            slope = 200.0  # Steepness of the transition
+            slope = 2000.0  # Steepness of the transition
             x = (T - self.T_mid) * slope
             R = self.R_max / (1.0 + np.exp(-x))
             return R

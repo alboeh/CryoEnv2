@@ -2,7 +2,7 @@ import numpy as np
 
 class Heater:
     DEFAULTS = {"R_H": 10e-3,
-                "V_H": 0.0} 
+                "V_H": 1e-6} 
 
     def __init__(self, *, default: bool = False, R_H: float = None, V_H: float = 0.0):
         """
@@ -32,10 +32,25 @@ class Heater:
     def set_heater(self, V_H: float):
         self.V_H = V_H
 
-    def set_heater_tp(self, tp_amplitude: float, record_length: int):
+    def set_heater_tp(self, time, tp_amplitude: float, tau_rise=2e-3, tau_fall=10e-3):
         # create a time-dependent voltage profile for the heater
-        self.V_H_tp = self.V_H * np.ones(record_length)
+        record_length = len(time)
+        
+        # Definition of a pulse-shaped TP
+        TPA = tp_amplitude
+        tau_rise = tau_rise
+        tau_fall = tau_fall
+
+        self.V_H_tp = np.zeros(record_length)
+        for i in range(record_length):
+            self.V_H_tp[i] = self.V_H + np.heaviside(i - record_length//4, 1) * TPA * (np.exp(-time[i - record_length//4] / tau_fall) - np.exp(-time[i - record_length//4] / tau_rise))
+
+        """
+        TODO: Implement Pulse shape parameter, e g this box pulse here
+        self.V_H_tp = np.ones(record_length) * self.V_H
         self.V_H_tp[record_length // 4:int((record_length // 4)*1.1)] += tp_amplitude
+        """    
+        
 
     def get_power(self, V_H: float) -> float:
         """
