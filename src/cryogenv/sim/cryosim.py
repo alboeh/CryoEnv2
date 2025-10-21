@@ -3,17 +3,21 @@ import scipy as sp
 import matplotlib.pyplot as plt
 
 from .core.timebase import init_timebase
+from .core.constants import const
 from .modules.heater import Heater
 from .modules.tes import TES
 from .modules.etm import ETM
+from .modules.squid import SQUID
+from .modules.noise import NOISE
 
 class Cryosim:
-    def __init__(self, record_length: int=2**14, sample_frequency=50e3, n_comp=2, default=True):
+    def __init__(self, record_length: int=2**14, sample_frequency=50e3, n_comp=2, set_noise: bool = True, default=True):
 
         self.record_length = record_length
         self.sample_frequency = sample_frequency
         self.time, self.f, self.w = init_timebase(self, self.record_length, self.sample_frequency)
         self.n_comp = n_comp  # Number of thermal components in the simulation
+        self.set_noise = set_noise
         self.modules = {}
 
         # Give errors for default parameters mode
@@ -34,6 +38,14 @@ class Cryosim:
             # Add ETM
             self.etm = ETM(n_comp=self.n_comp, default=True)
             self.modules['etm'] = self.etm
+
+            # Add SQUID
+            self.squid = SQUID(default=True)
+            self.modules['squid'] = self.squid
+
+            # Add noise
+            if set_noise:
+                self.noise = NOISE(default=True, record_length=self.record_length, sample_frequency=self.sample_frequency)
             
             # Add partices (TODO: implement later)
             self.P_Pe = 0.0  # Pulse power input electrical
@@ -61,15 +73,21 @@ class Cryosim:
     def set_bias(self, bias_voltage: float):
         self.etm.set_bias(bias_voltage)
 
-    def solve(self, method="exact"):
+    def solve(self, method="exact", noise: bool = True):
         self.I_T, self.T_e, self.T_a = self.solver(method)
+
+        if self.set_noise:
+            self.noise.get_total_noise(self.I_T, squid=self.squid)
+            self.squid.get_output(self.I_T_noise)   # Get noise SQUID output
+        else:
+            self.squid.get_output(self.I_T) # Get V_f in FLL
 
     def render(self):
         # 2x2 Subplots erstellen
         fig, axes = plt.subplots(2, 2, figsize=(10, 6))
 
-        # Einzelne Achsen ansprechen
-        axes[0, 0].plot(np.linspace(20e-3, 50e-3, 500) * 1e3, self.tes.get_resistance(np.linspace(20e-3, 50e-3, 500)) * 1e3)
+        # Transition curve
+        axes[0, 0].plot(np.linspace(25e-3, 45e-3, 500) * 1e3, self.tes.get_resistance(np.linspace(25e-3, 45e-3, 500)) * 1e3)
         axes[0, 0].plot(self.T_e * 1e3, self.tes.get_resistance(self.T_e) * 1e3, 'r.', label='Operating point')
         axes[0, 0].set_title("TES curve")
         axes[0, 0].set_xlabel("Temperature (mK)")
@@ -77,6 +95,7 @@ class Cryosim:
         axes[0, 0].legend()
         axes[0, 0].grid()
 
+        # Heat transfers
         axes[0, 1].plot(self.time, (self.T_e-self.T_e[0]) * 1e3, label='Delta T_e (electrical) in mK')
         axes[0, 1].plot(self.time, (self.T_a-self.T_a[0]) * 1e3, label='Delta T_a (absorber) in mK')
         axes[0, 1].legend()
@@ -85,18 +104,34 @@ class Cryosim:
         axes[0, 1].set_ylabel("Temperature (mK)")
         axes[0, 1].grid()
 
-        axes[1, 0].plot(self.time, self.V_H_tp * 1e6, color='orange', label='Heater Voltage')
-        axes[1, 0].set_title("Heater voltage")
+        # Output signal
+        axes[1, 0].plot(self.time, (self.V_H + self.V_H_tp) * 1e6, color='orange', label='Heater Voltage')
         axes[1, 0].set_xlabel("Time (s)")
-        axes[1, 0].set_ylabel("Voltage (µV)")
+        axes[1, 0].set_ylabel("Heater Voltage (µV)", color='orange')
+        axes[1, 0].tick_params(axis='y', labelcolor='orange')
         axes[1, 0].grid()
-        axes[1, 0].legend()
+        axes[1, 0].set_title("Heater and Feedback Voltages")
+        # Secondary axis (right side)
+        ax2 = axes[1, 0].twinx()
+        ax2.plot(self.time, self.V_f, color='green', label='Feedback Voltage')
+        ax2.set_ylabel("Feedback Voltage (V)", color='green')
+        ax2.tick_params(axis='y', labelcolor='green')
+        # Combine legends from both axes
+        lines1, labels1 = axes[1, 0].get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        axes[1, 0].legend(lines1 + lines2, labels1 + labels2, loc='upper right')
 
-        axes[1, 1].plot(self.time, self.I_T * 1e6, color='green')
-        axes[1, 1].set_title("Current through TES")
-        axes[1, 1].set_xlabel("Time (s)")
-        axes[1, 1].set_ylabel("Current (µA)")
+        # NPS
+        axes[1, 1].loglog(self.f, self.NPS_flicker, color='blue',linestyle="--", label={"Flicker"})
+        axes[1, 1].loglog(self.f, self.NPS_squid, color='blue',linestyle="-.", label={"Squid"})
+        axes[1, 1].loglog(self.f, self.NPS_const, color='blue',linestyle=":", label={"Other"})
+        axes[1, 1].loglog(self.f, self.NPS, color='green', label={"Overall"})
+        axes[1, 1].set_title("Noise Power Spectrum")
+        axes[1, 1].set_xlabel("Frequency (Hz)")
+        axes[1, 1].set_ylabel("Power (V**2/Hz)")
+        axes[1, 1].set_ylim(np.min([self.NPS_squid[1], self.NPS_const[1]])/10,np.max(self.NPS)*10)
         axes[1, 1].grid()
+        axes[1, 1].legend()
 
         # Layout anpassen
         plt.tight_layout()
@@ -122,11 +157,11 @@ class Cryosim:
             idx = np.clip(idx, 0, len(self.time) - 1)   # Makes sure, that no index out of range is taken
 
             # Get heater voltage in corresponding timestamp
-            V_H_tp = self.V_H_tp[idx]  
+            V_H = self.V_H + self.V_H_tp[idx]  
 
             R_T = self.tes.get_resistance(T_e)
             P_J = I_T**2 * R_T
-            P_H = self.heater.get_power(V_H_tp)
+            P_H = self.heater.get_power(V_H)
 
             # Take care of signs!
             dIdt  = (self.V_B - I_T * (self.R_S + R_T)) / self.L
@@ -137,7 +172,7 @@ class Cryosim:
 
         return dydt
     
-    def solver(self, method):
+    def solver(self, method="exact"):
 
         # Guess starting values (but still give some time to stabilize before t_eval begins)
         self.I_T0 = self.V_B / (2 * self.R_S)
@@ -155,7 +190,6 @@ class Cryosim:
                 method="BDF",                                  # "RK23" (Runge-Kutta 2nd order), "RK45" (Runge-Kutta 4th order), "Radau" (implicit Runge-Kutta method), "BDF" (implicit multi-step variable-order method)
                 t_eval=self.time,                               # points to give out (only for time values)
                 max_step=(self.time[1] - self.time[0]) / 2    # don’t skip over your drive/measurement grid
-
             )
 
             I_T, T_e, T_a = sol.y  # Shape: (3, N)
@@ -267,4 +301,31 @@ class Cryosim:
         return self.etm.V_B
     
     # SQUID
-    ...
+    @property
+    def V_f(self):
+        return self.squid.V_f
+    
+    @property
+    def I_f(self):
+        return self.squid.I_f
+    
+    # NOISE
+    @property
+    def I_T_noise(self):
+        return self.noise.I_T_noise
+        
+    @property
+    def NPS(self):
+        return self.noise.NPS
+    
+    @property
+    def NPS_flicker(self):
+        return self.noise.NPS_flicker
+    
+    @property
+    def NPS_squid(self):
+        return self.noise.NPS_squid
+    
+    @property
+    def NPS_const(self):
+        return self.noise.NPS_const

@@ -32,7 +32,7 @@ class Heater:
     def set_heater(self, V_H: float):
         self.V_H = V_H
 
-    def set_heater_tp(self, time, tp_amplitude: float, tau_rise=2e-3, tau_fall=10e-3):
+    def set_heater_tp(self, time, tp_amplitude: float, tau_rise=1e-3, tau_fall=20e-3):
         # create a time-dependent voltage profile for the heater
         record_length = len(time)
         
@@ -43,7 +43,7 @@ class Heater:
 
         self.V_H_tp = np.zeros(record_length)
         for i in range(record_length):
-            self.V_H_tp[i] = self.V_H + np.heaviside(i - record_length//4, 1) * TPA * (np.exp(-time[i - record_length//4] / tau_fall) - np.exp(-time[i - record_length//4] / tau_rise))
+            self.V_H_tp[i] = np.heaviside(i - record_length//4, 1) * TPA * (np.exp(-time[i - record_length//4] / tau_fall) - np.exp(-time[i - record_length//4] / tau_rise))
 
         """
         TODO: Implement Pulse shape parameter, e g this box pulse here
