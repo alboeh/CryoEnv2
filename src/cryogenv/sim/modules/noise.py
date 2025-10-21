@@ -46,7 +46,7 @@ class NOISE:
 
         print(f"Noise applied.")
 
-    def get_total_noise(self, I_T, squid, model="simple"):
+    def get_total_noise(self, I_T, T_e, squid, tes, model="simple"):
         fs = self.sample_frequency
         N = self.record_length
 
@@ -54,6 +54,19 @@ class NOISE:
             self.S_flicker = self.mu_flicker * ((2 * np.pi) / np.maximum(self.w, self.w[1]))**self.ceta_flicker     # Preventing div/0
         else:
             raise ValueError("Only simple noise model yet implmented")
+        
+        # In this part we want to adapt the noise depending on the current position in the Transition
+        # As far as we measured in real detectors, the 1/f flicker noise only happens during transition, not before and only a little after
+        # The constant noise is increasing from normal to superconducting, which is weird but observed in different setups
+        # Deactivate if not wanted
+        if True:
+            T_e_mid = np.mean(T_e)
+            R_T = tes.get_resistance(T_e_mid)
+            ratio = R_T / tes.R_max           # 0 if superconducting, ~mid if in transition, 1 if normal conducting
+
+            # Adapt noises as explained
+            self.S_const *= 1 + ratio    # Measured in real detector, that the const noise is ~doubling from super to normal conducting
+            self.S_flicker *= np.sin(np.pi * ratio)**2
         
         # Sum up all noise contributions
         self.S = self.S_const + self.S_squid + self.S_flicker

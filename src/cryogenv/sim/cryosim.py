@@ -77,7 +77,7 @@ class Cryosim:
         self.I_T, self.T_e, self.T_a = self.solver(method)
 
         if self.set_noise:
-            self.noise.get_total_noise(self.I_T, squid=self.squid)
+            self.noise.get_total_noise(self.I_T, T_e=self.T_e, squid=self.squid, tes=self.tes)
             self.squid.get_output(self.I_T_noise)   # Get noise SQUID output
         else:
             self.squid.get_output(self.I_T) # Get V_f in FLL
