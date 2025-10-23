@@ -58,35 +58,33 @@ class NOISE:
         # In this part we want to adapt the noise depending on the current position in the Transition
         # As far as we measured in real detectors, the 1/f flicker noise only happens during transition, not before and only a little after
         # The constant noise is increasing from normal to superconducting, which is weird but observed in different setups
-        # Deactivate if not wanted
-        if True:
-            T_e_mid = np.mean(T_e)
-            R_T = tes.get_resistance(T_e_mid)
-            ratio = R_T / tes.R_max           # 0 if superconducting, ~mid if in transition, 1 if normal conducting
+        R_T = tes.get_resistance(T_e[0])
+        ratio = R_T / tes.R_max           # 0 if superconducting, ~mid if in transition, 1 if normal conducting
 
-            # Adapt noises as explained
-            self.S_const *= 1 + ratio    # Measured in real detector, that the const noise is ~doubling from super to normal conducting
-            self.S_flicker *= np.sin(np.pi * ratio)**2
+        # Adapt noises as explained
+        S_const_ratio = self.S_const * (1 + ratio)    # Measured in real detector, that the const noise is ~doubling from super to normal conducting
+        S_flicker_ratio = self.S_flicker * np.sin(np.pi * ratio)
+        S_squid_ratio = self.S_squid    # Change nothing here
         
         # Sum up all noise contributions
-        self.S = self.S_const + self.S_squid + self.S_flicker
+        S_ratio = S_const_ratio + S_squid_ratio + S_flicker_ratio
 
         # Apply the Lowpass filtering
         LP = np.abs(3 / ((1j*self.w / (2 * np.pi * self.f_cut))**2 + 3*(1j*self.w/(2*np.pi*self.f_cut))+3)) **2
-        self.S *= LP 
-        self.S_const *= LP
-        self.S_flicker *= LP
-        self.S_squid *= LP
+        S_LP = S_ratio * LP 
+        S_const_LP = S_const_ratio * LP
+        S_flicker_LP = S_flicker_ratio * LP
+        S_squid_LP = S_squid_ratio * LP
 
         phase_rnd = np.random.uniform(0, 2 * np.pi, self.N) # random phase for noise
         
         df = fs / N
-        noise_rnd = np.sqrt(self.S * df / 2) * (np.cos(phase_rnd) + 1j * np.sin(phase_rnd))
+        noise_rnd = np.sqrt(S_LP * df / 2) * (np.cos(phase_rnd) + 1j * np.sin(phase_rnd))
 
         # These are just for nice plotting:
-        noise_rnd_const = np.sqrt(self.S_const * df / 2) * (np.cos(phase_rnd) + 1j * np.sin(phase_rnd))
-        noise_rnd_flicker = np.sqrt(self.S_flicker * df / 2) * (np.cos(phase_rnd) + 1j * np.sin(phase_rnd))
-        noise_rnd_squid = np.sqrt(self.S_squid * df / 2) * (np.cos(phase_rnd) + 1j * np.sin(phase_rnd))
+        noise_rnd_const = np.sqrt(S_const_LP * df / 2) * (np.cos(phase_rnd) + 1j * np.sin(phase_rnd))
+        noise_rnd_flicker = np.sqrt(S_flicker_LP * df / 2) * (np.cos(phase_rnd) + 1j * np.sin(phase_rnd))
+        noise_rnd_squid = np.sqrt(S_squid_LP * df / 2) * (np.cos(phase_rnd) + 1j * np.sin(phase_rnd))
 
         # TODO: Why do I need such a big factor here? Should actually work without
         #noise_rnd *= 1e0
